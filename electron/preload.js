@@ -1,0 +1,1 @@
+global.electron_remote=require('electron').remote;

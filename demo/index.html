@@ -37,6 +37,16 @@
 <video id="remoteVideo" hidden="hidden"></video>
 <video id="localVideo" hidden="hidden" muted="muted"></video>
 
+<div id="globalDevices">
+    <div class="select">
+        <label for="audioOutput">Audio output destination: </label><select id="audioOutput"></select>
+    </div>
+    <div class="select">
+        <label for="audioSource">Audio input source: </label><select id="audioSource"></select>
+    </div>
+</div>
+
+
 <script type="text/html" id="template-incoming">
 
     <div class="modal fade" tabindex="-1" role="dialog">
@@ -213,7 +223,7 @@
                         <button class="btn btn-primary complete" type="button" >Complete Transfer</button>
                         <div className="text-muted">
                             <small>* Please not that warm transfer in this demo will automatically call completeTransfer
-                                   w/o user interaction
+                                w/o user interaction
                             </small>
                         </div>
                     </form>
@@ -227,6 +237,7 @@
                     </form>
                     <hr/>
                     <pre class="info"></pre>
+                    <div id="callDevices"></div>
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-danger hangup">Hang Up</button>

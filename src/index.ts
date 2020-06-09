@@ -5,6 +5,10 @@ import {uuid, delay, extend} from './utils';
 import {WebPhoneSession} from './session';
 import {AudioHelperOptions} from './audioHelper';
 import {default as MediaStreams, MediaStreamsImpl} from './mediaStreams';
+import {DefaultSessionDescriptionHandler} from "./DefaultSessionDescriptionHandler";
+import {CitrixSessionDescriptionHandler} from "./CitrixSessionDescriptionHandler";
+import {Logger} from "sip.js/types/logger-factory";
+import {SessionDescriptionHandlerObserver} from 'sip.js/lib/Web/SessionDescriptionHandlerObserver';
 
 const {version} = require('../package.json');
 
@@ -121,7 +125,9 @@ export default class WebPhone {
                 iceCheckingTimeout: this.sipInfo.iceCheckingTimeout || this.sipInfo.iceGatheringTimeout || 500,
                 rtcConfiguration: {
                     sdpSemantics,
-                    iceServers
+                    iceServers,
+                    bundlePolicy: 'balanced',
+                    enableDtlsSrtp: true
                 }
             },
             constraints: options.mediaConstraints || defaultMediaConstraints,
@@ -142,7 +148,20 @@ export default class WebPhone {
             sessionDescriptionHandlerFactoryOptions.alwaysAcquireMediaFirst = true;
         }
 
-        const sessionDescriptionHandlerFactory = options.sessionDescriptionHandlerFactory || [];
+        //TODO: changes vyshakhbabji
+        // const sessionDescriptionHandlerFactory = options.sessionDescriptionHandlerFactory || [];
+        // const sessionDescriptionHandlerFactory = function(session, options) {
+        //     const logger: Logger = session.ua.getLogger("sip.invitecontext.defaultSessionDescriptionHandler", session.id);
+        //     const observer: SessionDescriptionHandlerObserver = new SessionDescriptionHandlerObserver(session, options);
+        //     return new DefaultSessionDescriptionHandler(logger, observer, sessionDescriptionHandlerFactoryOptions);
+        // };
+
+        //TODO: changes VB
+        const sessionDescriptionHandlerFactory = function(session, options) {
+            const logger: Logger = session.ua.getLogger("sip.invitecontext.citrixSessionDescriptionHandler", session.id);
+            const observer: SessionDescriptionHandlerObserver = new SessionDescriptionHandlerObserver(session, options);
+            return new CitrixSessionDescriptionHandler(logger, observer, sessionDescriptionHandlerFactoryOptions);
+        };
 
         const sipErrorCodes =
             regData.sipErrorCodes && regData.sipErrorCodes.length
