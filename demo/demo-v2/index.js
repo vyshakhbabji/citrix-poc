@@ -31,55 +31,14 @@ $(function() {
     window.acceptedTemplate = $acceptedTemplate;
     var $globalDevices = $('#globalDevices');
 
-    var remoteVideoElement = document.getElementById('remoteVideo');//ui.video.localVideo -VDILocal
-    var localVideoElement = document.getElementById('localVideo');//ui.video.remoteVideo - VDIRemote
+    var remoteVideoElement = document.getElementById('remoteVideo');
+    var localVideoElement = document.getElementById('localVideo');
     var videoElement = document.querySelector('video');
 
-    var citrixEnv =  true;
-
-    if(citrixEnv) {
-        window.getWindowHandleAsHex = function () {
-            const remote = window.electron_remote;
-            let win = remote.getCurrentWindow();
-            return new Promise((resolve, reject) => {
-                var uint8String = "";
-                var uint8 = win.getNativeWindowHandle();
-                uint8.forEach(function (element) {
-                    if (element < 16) {
-                        uint8String = uint8String.concat("0")
-                    }
-                    uint8String = uint8String.concat(element.toString(16));
-                });
-                console.log(uint8String);
-                resolve(uint8String);
-            })
-        };
-    }
-
-    navigator.mediaDevices.addEventListener('devicechange', (event) => {
-        console.error('Device Changed / updated',event);
-    })
-
-    localVideoElement.addEventListener('loadedmetadata', event => {
-        console.error('localVideo element ready ', event);
-    })
-
-
-    remoteVideoElement.addEventListener('loadedmetadata', event => {
-        console.error('remotevideo element ready ', event);
-    })
-
-    var localStream = null;
-    var remoteStream = null;
-
-    const audioInputSelect = document.querySelector('select#audioSource'); // selector - vdiAudioInput
-    const audioOutputSelect = document.querySelector('select#audioOutput'); // selector - vdiAudioOutput
-    const videoInputSelect = document.querySelector('select#videoSource'); // selector - vdiVideoInput
-    const selectors = [audioInputSelect, audioOutputSelect, videoInputSelect];
+    const audioInputSelect = document.querySelector('select#audioSource');
+    const audioOutputSelect = document.querySelector('select#audioOutput');
+    const selectors = [audioInputSelect, audioOutputSelect];
     audioOutputSelect.disabled = !('sinkId' in HTMLMediaElement.prototype);
-
-
-    /******************************************************************************************************************************************/
 
     function gotDevices(deviceInfos) {
         // Handles being called several times to update labels. Preserve values.
@@ -90,9 +49,7 @@ $(function() {
             }
         });
         for (let i = 0; i !== deviceInfos.length; ++i) {
-
             const deviceInfo = deviceInfos[i];
-            console.error(deviceInfos[i]);
             const option = document.createElement('option');
             option.value = deviceInfo.deviceId;
             if (deviceInfo.kind === 'audioinput') {
@@ -101,9 +58,6 @@ $(function() {
             } else if (deviceInfo.kind === 'audiooutput') {
                 option.text = deviceInfo.label || `speaker ${audioOutputSelect.length + 1}`;
                 audioOutputSelect.appendChild(option);
-            } else if (deviceInfo.kind == 'videoinput') {
-                option.text = deviceInfo.label || `cam ${videoInputSelect.length + 1}`;
-                videoInputSelect.appendChild(option);
             } else {
                 console.log('Some other kind of source/device: ', deviceInfo);
             }
@@ -114,9 +68,6 @@ $(function() {
             }
         });
     }
-
-    /******************************************************************************************************************************************/
-
 
     // Attach audio output device to video element using device/sink ID.
     function attachSinkId(element, sinkId) {
@@ -140,9 +91,6 @@ $(function() {
         }
     }
 
-    /******************************************************************************************************************************************/
-
-
     function changeAudioDestination() {
         const audioDestination = audioOutputSelect.value;
         attachSinkId(videoElement, audioDestination);
@@ -154,14 +102,7 @@ $(function() {
     }
 
     function handleError(error) {
-        console.log('getUserMedia error: ', error);
-    }
-
-    /******************************************************************************************************************************************/
-
-    window.onload = function () {
-        var element = document.getElementById('localVideo');
-        element.muted = "muted";
+        console.log('navigator.MediaDevices.getUserMedia error: ', error.message, error.name);
     }
 
     function start(session) {
@@ -172,21 +113,14 @@ $(function() {
         }
         const audioSource = audioInputSelect.value;
         const constraints = {
-            audio: {deviceId: audioSource ? {exact: audioSource} : undefined},
-            video: {
-                mandatory: {
-                    sourceId: videoSource,
-                    minWidth: 1,
-                    maxWidth: 1,
-                    minHeight: 1,
-                    maxHeight: 1,
-                    maxFrameRate: 30
-                }
-            }
+            audio: {deviceId: audioSource ? {exact: audioSource} : undefined}
         };
+        navigator.mediaDevices
+            .getUserMedia(constraints)
+            .then(stream => gotStream(session, stream))
+            .then(gotDevices)
+            .catch(handleError);
     }
-
-    /******************************************************************************************************************************************/
 
     /**
      * @param {jQuery|HTMLElement} $tpl
@@ -295,7 +229,7 @@ $(function() {
         sipInfo = data.sipInfo[0] || data.sipInfo;
 
         //TODO: vyshakhbabji use this for Citrix
-        var audioSource =  VDIaudioInput.value;
+        // var audioSource =  VDIaudioInput.value;
 
         webPhone = new WebPhone(data, {
             appKey: localStorage.getItem('webPhoneAppKey'),
@@ -313,8 +247,7 @@ $(function() {
             enableMediaReportLogging: false,
 
             //TODO: vyshakhbabji use this for Citrix
-            mediaConstraints : {audio: audioSource , audioOutput : audioOutputSelect},
-            enableCitrix : citrixEnv
+            // mediaConstraints : {audio: audioSource};
         });
 
         webPhone.userAgent.audioHelper.loadAudio({
@@ -683,11 +616,10 @@ $(function() {
     }
 
     function makeCallForm() {
-
-        if(citrixEnv)
-            CitrixWebRTC.enumerateDevices().then(gotDevices).then(handleError);
-        else
-            navigator.mediaDevices.enumerateDevices().then(gotDevices).then(handleError);
+        navigator.mediaDevices
+            .enumerateDevices()
+            .then(gotDevices)
+            .catch(handleError);
 
         var $form = cloneTemplate($callTemplate);
 

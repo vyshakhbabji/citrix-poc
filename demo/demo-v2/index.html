@@ -34,12 +34,8 @@
     <div id="app"></div>
 </div>
 
-<p>REMOTE VIDEO ( phone voice to mac) </p>
-<audio id="remoteVideo"  width="640px" height="100px" autoplay="autoplay" loop="loop" controls="controls">Remote </audio>
-<br>
-<br>
-<p>LOCAL VIDEO (mac to phone ) </p>
-<audio id="localVideo"  width="640px" height="100px" autoplay="autoplay" loop="loop" controls="controls" muted="muted" >Local </audio>
+<video id="remoteVideo" hidden="hidden"></video>
+<video id="localVideo" hidden="hidden" muted="muted"></video>
 
 <div id="globalDevices">
     <div class="select">
@@ -47,9 +43,6 @@
     </div>
     <div class="select">
         <label for="audioSource">Audio input source: </label><select id="audioSource"></select>
-    </div>
-    <div class="select">
-        <label for="videoSource">Video input source: </label><select id="videoSource"></select>
     </div>
 </div>
 

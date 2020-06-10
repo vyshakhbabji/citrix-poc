@@ -17,7 +17,7 @@ import * as Modifiers from 'sip.js/lib/Web/Modifiers';
 
 import {Logger} from 'sip.js/types/logger-factory';
 //vyshakhbabji addition
-import * as vdiCitrix from './CitrixWebRTC.min.js';
+import * as vdiCitrix from './citrix-webrtc.js';
 
 //TODO vyshakhbabji Check this
 // import {Utils} from 'sip.js/types/utils';
@@ -622,17 +622,6 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
             this.emit('userMediaRequest', constraints);
 
             if (constraints.audio || constraints.video) {
-                // this.WebRTC.getUserMedia(constraints)
-                //     .then((streams: any) => {
-                //         this.observer.trackAdded();
-                //         this.emit('userMedia', streams);
-                //         resolve(streams);
-                //     })
-                //     .catch((e: any) => {
-                //         this.emit('userMediaFailed', e);
-                //         reject(e);
-                //     });
-
                 //TODO: vyshakhbabji use this for citrix , check if promise works or use
                 // vdiCitrix.getUserMedia(constraint, (stream) => {
 

@@ -130,6 +130,7 @@ export default class WebPhone {
                     enableDtlsSrtp: true
                 }
             },
+            //TODO: vyshakhbabji check this for native and makesure its set correctly
             constraints: options.mediaConstraints || defaultMediaConstraints,
             modifiers
         };

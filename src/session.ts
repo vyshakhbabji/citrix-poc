@@ -63,7 +63,7 @@ export type WebPhoneSession = InviteClientContext &
         local_hold: boolean;
         failed: any; //FIXME PROTECTED
         sessionDescriptionHandler: {
-            peerConnection: RTCPeerConnectionLegacy; //FIXME Not documented
+            peerConnection; //FIXME Not documented
             getDirection;
         };
         // non-sip
