@@ -17,7 +17,7 @@ import * as Modifiers from 'sip.js/lib/Web/Modifiers';
 
 import {Logger} from 'sip.js/types/logger-factory';
 //vyshakhbabji addition
-import * as vdiCitrix from './citrix-webrtc.js';
+import * as CitrixWebRTC from './CitrixWebRTC_fixed.js';
 
 //TODO vyshakhbabji Check this
 // import {Utils} from 'sip.js/types/utils';
@@ -31,13 +31,13 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
         session: InviteClientContext | InviteServerContext,
         options: any
     ): CitrixSessionDescriptionHandler {
-        const logger: Logger = session.ua.getLogger('sip.invitecontext.sessionDescriptionHandler', session.id);
+        const logger: Logger = session.ua.getLogger('sip.invitecontext.citrixSessionDescriptionHandler', session.id);
         const observer: SessionDescriptionHandlerObserver = new SessionDescriptionHandlerObserver(session, options);
         return new CitrixSessionDescriptionHandler(logger, observer, options);
     }
 
     public type: TypeStrings;
-    public peerConnection!: vdiCitrix.PeerConnection;
+    public peerConnection!: CitrixWebRTC.PeerConnection;
     private options: any;
     private logger: Logger;
     private observer: SessionDescriptionHandlerObserver;
@@ -53,6 +53,11 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
     private iceGatheringTimeout: boolean;
     private iceGatheringTimer: any | undefined;
     private constraints: any;
+    private vdiCitrix: any;
+
+    private localAudio : any;
+    private remoteAudio:any;
+    private RTCOfferOptions: any;
 
     constructor(logger: Logger, observer: SessionDescriptionHandlerObserver, options: any) {
         super();
@@ -78,11 +83,11 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
             }
         };
 
-        this.logger.log('SessionDescriptionHandlerOptions: ' + JSON.stringify(this.options));
+        this.logger.log('CitrixSessionDescriptionHandlerOptions: ' + JSON.stringify(this.options));
 
         this.direction = this.C.DIRECTION.NULL;
 
-        //TODO : vyshakhbabji Modifiers extraction neeeded
+        //TODO : vyshakhbabji Modifiers extraction neeeded?
         this.modifiers = this.options.modifiers || [];
         if (!Array.isArray(this.modifiers)) {
             this.modifiers = [this.modifiers];
@@ -95,13 +100,17 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
             RTCPeerConnection: environment.RTCPeerConnection
         };
 
+        this.vdiCitrix = environment.CitrixWebRTC;
+
         this.iceGatheringTimeout = false;
 
         this.initPeerConnection(this.options.peerConnectionOptions);
 
-        console.error(vdiCitrix);
-
         this.constraints = this.checkAndDefaultConstraints(this.options.constraints);
+
+        this.localAudio =  this.options.localAudio;
+        this.remoteAudio = this.options.remoteAudio;
+        this.RTCOfferOptions = this.options.RTCOfferOptions;
     }
 
     // Functions the sesssion can use
@@ -164,14 +173,9 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
             this.initPeerConnection(options.peerConnectionOptions);
         }
 
-        console.error('this.constraints', this.constraints);
-
         // Merge passed constraints with saved constraints and save
         let newConstraints: any = Object.assign({}, this.constraints, options.constraints);
         newConstraints = this.checkAndDefaultConstraints(newConstraints);
-
-        console.error('newConstraints ', newConstraints);
-
         if (JSON.stringify(newConstraints) !== JSON.stringify(this.constraints)) {
             this.constraints = newConstraints;
             this.shouldAcquireMedia = true;
@@ -184,25 +188,24 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
         //TODO: vyshakhbabji make modifications for citrix
         modifiers = modifiers.concat(this.modifiers);
 
-        return (
-            Promise.resolve()
-                .then(() => {
-                    if (this.shouldAcquireMedia) {
-                        return this.acquire(this.constraints).then(() => {
-                            this.shouldAcquireMedia = false;
-                        });
-                    }
-                })
-                //TODO: vyshakhbabji setRTC OFferoptions as per citrix need (offertoVideo offertoaudio)
-                .then(() => this.createOfferOrAnswer(options.RTCOfferOptions, modifiers))
-                .then((description: RTCSessionDescriptionInit) => {
-                    this.emit('getDescription', description);
-                    return {
-                        body: description.sdp,
-                        contentType: this.CONTENT_TYPE
-                    };
-                })
-        );
+        //TODO: vyshakhbabji setRTC OFferoptions as per citrix need (offertoVideo offertoaudio)
+        //Need to add the modifiers here instead
+        return Promise.resolve()
+            .then(() => {
+                if (this.shouldAcquireMedia) {
+                    return this.acquire(this.constraints).then(() => {
+                        this.shouldAcquireMedia = false;
+                    });
+                }
+            })
+            .then(() => this.createOfferOrAnswer(options.RTCOfferOptions, modifiers))
+            .then((description: RTCSessionDescriptionInit) => {
+                this.emit('getDescription', description);
+                return {
+                    body: description.sdp,
+                    contentType: this.CONTENT_TYPE
+                };
+            });
     }
 
     /**
@@ -263,59 +266,89 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
             sdp: sessionDescription
         };
 
-        return Promise.resolve()
-            .then(() => {
-                // Media should be acquired in getDescription unless we need to do it sooner for some reason (FF61+)
-                if (this.shouldAcquireMedia && this.options.alwaysAcquireMediaFirst) {
-                    return this.acquire(this.constraints).then(() => {
-                        this.shouldAcquireMedia = false;
+        return (
+            Promise.resolve()
+                .then(() => {
+                    // Media should be acquired in getDescription unless we need to do it sooner for some reason (FF61+)
+                    if (this.shouldAcquireMedia && this.options.alwaysAcquireMediaFirst) {
+                        return this.acquire(this.constraints).then(() => {
+                            this.shouldAcquireMedia = false;
+                        });
+                    }
+                })
+                //TODO: fix modifiers everywhere possible
+                .then(() => Utils.reducePromises(modifiers, description))
+                .catch(e => {
+                    if (e.type === TypeStrings.SessionDescriptionHandlerError) {
+                        throw e;
+                    }
+                    const error = new Exceptions.SessionDescriptionHandlerError(
+                        'setDescription',
+                        e,
+                        'The modifiers did not resolve successfully'
+                    );
+                    this.logger.error(error.message);
+                    this.emit('peerConnection-setRemoteDescriptionFailed', error);
+                    throw error;
+                })
+                .then(description => {
+                    //TODO: vyshakhbabji add video = 0
+                    var type = description.type;
+                    var sdp = description.sdp;
+                    // var video = "m=video 0 UDP/TLS/RTP/SAVPF 120\n" +
+                    //     "c=IN IP4 0.0.0.0\n" +
+                    //     "a=inactive\n";
+                    // sdp = sdp + video;
+
+                    var modifiedDescription = new RTCSessionDescription({type, sdp});
+
+                    console.error('modified description', modifiedDescription);
+                    return new Promise((resolve, reject) => {
+                        this.emit('setDescription', modifiedDescription);
+                        this.peerConnection.setRemoteDescription(
+                            modifiedDescription,
+                            () => {
+                                this.logger.log('setRemoteDescription success');
+                                resolve();
+                            },
+                            () => {
+                                this.logger.log('setRemoteDescription failed');
+                                reject();
+                            }
+                        );
                     });
-                }
-            })
-            .then(() => Utils.reducePromises(modifiers, description))
-            .catch(e => {
-                if (e.type === TypeStrings.SessionDescriptionHandlerError) {
-                    throw e;
-                }
-                const error = new Exceptions.SessionDescriptionHandlerError(
-                    'setDescription',
-                    e,
-                    'The modifiers did not resolve successfully'
-                );
-                this.logger.error(error.message);
-                this.emit('peerConnection-setRemoteDescriptionFailed', error);
-                throw error;
-            })
-            .then(modifiedDescription => {
-                this.emit('setDescription', modifiedDescription);
-                return this.peerConnection.setRemoteDescription(modifiedDescription);
-            })
-            .catch(e => {
-                if (e.type === TypeStrings.SessionDescriptionHandlerError) {
-                    throw e;
-                }
-                // Check the original SDP for video, and ensure that we have want to do audio fallback
-                if (/^m=video.+$/gm.test(sessionDescription) && !options.disableAudioFallback) {
-                    // Do not try to audio fallback again
-                    options.disableAudioFallback = true;
-                    // Remove video first, then do the other modifiers
-                    return this.setDescription(sessionDescription, options, [Modifiers.stripVideo].concat(modifiers));
-                }
-                const error = new Exceptions.SessionDescriptionHandlerError('setDescription', e);
-                if (error.error) {
-                    this.logger.error(error.error);
-                }
-                this.emit('peerConnection-setRemoteDescriptionFailed', error);
-                throw error;
-            })
-            .then(() => {
-                if (this.peerConnection.getReceivers) {
-                    this.emit('setRemoteDescription', this.peerConnection.getReceivers());
-                } else {
-                    this.emit('setRemoteDescription', (this.peerConnection as any).getRemoteStreams());
-                }
-                this.emit('confirmed', this);
-            });
+                })
+                .catch(e => {
+                    if (e.type === TypeStrings.SessionDescriptionHandlerError) {
+                        throw e;
+                    }
+                    // Check the original SDP for video, and ensure that we have want to do audio fallback
+                    if (/^m=video.+$/gm.test(sessionDescription) && !options.disableAudioFallback) {
+                        // Do not try to audio fallback again
+                        options.disableAudioFallback = true;
+                        // Remove video first, then do the other modifiers
+                        return this.setDescription(
+                            sessionDescription,
+                            options,
+                            [Modifiers.stripVideo].concat(modifiers)
+                        );
+                    }
+                    const error = new Exceptions.SessionDescriptionHandlerError('setDescription', e);
+                    if (error.error) {
+                        this.logger.error(error.error);
+                    }
+                    this.emit('peerConnection-setRemoteDescriptionFailed', error);
+                    throw error;
+                })
+                .then(() => {
+                    this.emit('confirmed', this);
+                    if (this.peerConnection.getReceivers) {
+                        this.emit('setRemoteDescription', this.peerConnection.getReceivers());
+                    } else {
+                        this.emit('setRemoteDescription', (this.peerConnection as any).getRemoteStreams());
+                    }
+                })
+        );
     }
 
     /**
@@ -364,41 +397,8 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
         return this.direction;
     }
 
-    private createOffer(RTCOfferOptions) {
-        var self = this;
-        return new Promise(function(resolve, reject) {
-            self.peerConnection.createOffer(
-                descr => {
-                    self.peerConnection.setLocalDescription(descr);
-                    self.emit('addStream');
-                    resolve(descr);
-                },
-                e => {
-                    throw new Error('Error creating offer' + e.message);
-                },
-                RTCOfferOptions
-            );
-        });
-    }
-
-    private createAnswer(RTCOfferOptions) {
-        var self = this;
-        return new Promise(function(resolve, reject) {
-            self.peerConnection.createAnswer(
-                descr => {
-                    self.peerConnection.setLocalDescription(descr);
-                    self.emit('addStream');
-                    resolve(descr);
-                },
-                e => {
-                    throw new Error('Error creating offer' + e.message);
-                },
-                RTCOfferOptions
-            );
-        });
-    }
-
     // Internal functions
+
     private createOfferOrAnswer(
         RTCOfferOptions: any = {},
         modifiers: SessionDescriptionHandlerModifiers = []
@@ -408,7 +408,32 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
 
         this.logger.log(methodName);
 
-        return pc[methodName](RTCOfferOptions)
+        var localDescr = {
+            sdp: undefined,
+            type: undefined
+        };
+
+
+
+        console.error('RTCOfferOptions',RTCOfferOptions);
+
+        const createOfferOrAnswerPromise = () => {
+            return new Promise((resolve, reject) => {
+                pc[methodName](
+                    descr => {
+                        console.error('sdp is', descr);
+                        resolve(descr);
+                    },
+                    error => {
+                        console.error('error is', error);
+                        if (error) return reject(error);
+                    },
+                    RTCOfferOptions
+                );
+            });
+        };
+
+        return createOfferOrAnswerPromise()
             .catch((e: any) => {
                 if (e.type === TypeStrings.SessionDescriptionHandlerError) {
                     throw e;
@@ -424,11 +449,14 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
             .then((sdp: RTCSessionDescriptionInit) =>
                 Utils.reducePromises(modifiers, this.createRTCSessionDescriptionInit(sdp))
             )
-            .then((sdp: RTCSessionDescriptionInit) => {
+            .then((sdp: any) => {
                 this.resetIceGatheringComplete();
                 this.logger.log('Setting local sdp.');
                 this.logger.log('sdp is ' + sdp.sdp || 'undefined');
-                return pc.setLocalDescription(sdp);
+                pc.setLocalDescription(sdp);
+                localDescr.sdp = sdp.sdp;
+                localDescr.type = sdp.type;
+                return Promise.resolve();
             })
             .catch((e: any) => {
                 if (e.type === TypeStrings.SessionDescriptionHandlerError) {
@@ -444,12 +472,12 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
             })
             .then(() => this.waitForIceGatheringComplete())
             .then(() => {
-                const localDescription: RTCSessionDescriptionInit = this.createRTCSessionDescriptionInit(
-                    this.peerConnection.localDescription
-                );
+                //TODO:vyshakhbabji File bug for no access to localDescription via pc.localDescription
+                const localDescription = this.createRTCSessionDescriptionInit(localDescr);
                 return Utils.reducePromises(modifiers, localDescription);
             })
             .then((localDescription: RTCSessionDescriptionInit) => {
+                console.error('Final return of localDescription',localDescription);
                 this.setDirection(localDescription.sdp || '');
                 return localDescription;
             })
@@ -487,7 +515,6 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
 
     private checkAndDefaultConstraints(constraints: any): any {
         const defaultConstraints: any = {audio: true, video: !this.options.alwaysAcquireMediaFirst};
-
         constraints = constraints || defaultConstraints;
         // Empty object check
         if (Object.keys(constraints).length === 0 && constraints.constructor === Object) {
@@ -507,7 +534,6 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
     private initPeerConnection(options: any = {}): void {
         options = this.addDefaultIceCheckingTimeout(options);
         options.rtcConfiguration = options.rtcConfiguration || {};
-        console.error('options.rtcConfiguration', options.rtcConfiguration);
         options.rtcConfiguration = this.addDefaultIceServers(options.rtcConfiguration);
 
         this.logger.log('initPeerConnection');
@@ -518,24 +544,23 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
             this.peerConnection.close();
         }
 
-        console.error('options.rtcConfiguration', options.rtcConfiguration);
-
-        //vyshakhbabji - initalize CitrixWebRTC peerConnnection
-        // this.peerConnection = new this.WebRTC.RTCPeerConnection(options.rtcConfiguration);
-        this.peerConnection = new vdiCitrix.CitrixPeerConnection(options.rtcConfiguration);
+        this.peerConnection = new this.vdiCitrix.CitrixPeerConnection(options.rtcConfiguration);
 
         this.logger.log('New peer connection created');
 
+        //Citrix SDK doesnt support addTrack so no 'ontrack'
         if ('ontrack' in this.peerConnection) {
             this.peerConnection.addEventListener('track', (e: any) => {
-                this.logger.log('track added');
+                this.logger.log('track added ' + e);
                 this.observer.trackAdded();
                 this.emit('addTrack', e);
             });
         } else {
             this.logger.warn('Using onaddstream which is deprecated');
             (this.peerConnection as any).onaddstream = (e: any) => {
-                this.logger.log('stream added');
+                this.logger.log('stream added ' + e);
+                this.vdiCitrix.mapAudioElement(this.remoteAudio);
+                this.remoteAudio.srcObject = e.stream;
                 this.emit('addStream', e);
             };
         }
@@ -573,6 +598,15 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
                     this.triggerIceGatheringComplete();
                     break;
             }
+        };
+
+        this.peerConnection.onsignalingstatechange = () => {
+            this.logger.log('onsignalingstatechange: ' + this.peerConnection.signalingState);
+        };
+
+        this.peerConnection.onnegotiationneeded = function() {
+            console.error('onnegotiationneeded');
+            //what to do here? createOffer and  addStream again ?
         };
 
         this.peerConnection.oniceconnectionstatechange = () => {
@@ -618,23 +652,26 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
              * Make the call asynchronous, so that ICCs have a chance
              * to define callbacks to `userMediaRequest`
              */
-            this.logger.log('acquiring local media');
+            this.logger.log('acquiring local media with constraints set as' + this.constraints);
             this.emit('userMediaRequest', constraints);
 
-            if (constraints.audio || constraints.video) {
-                //TODO: vyshakhbabji use this for citrix , check if promise works or use
-                // vdiCitrix.getUserMedia(constraint, (stream) => {
-
-                vdiCitrix.getUserMedia(constraints)
-                    .then((streams: any) => {
-                        this.observer.trackAdded();
-                        this.emit('userMedia', streams);
-                        resolve(streams);
-                    })
-                    .catch((e: any) => {
-                        this.emit('userMediaFailed', e);
-                        reject(e);
+            //Citrix support for only audio - with audio deviceID generated by Citrix.enumarateDevices
+            if (constraints.audio) {
+                const getUserMediaPromise = (...args) => {
+                    return new Promise((res, rej) => {
+                        this.vdiCitrix.getUserMedia(...args, (streams, e) => {
+                            if (e) return reject(e);
+                            this.emit('userMedia', streams);
+                            this.observer.trackAdded();
+                            resolve(streams);
+                        });
                     });
+                };
+
+                getUserMediaPromise(constraints).catch(e => {
+                    this.emit('userMediaFailed', e);
+                    throw new Error('getUserMedia Failed with error' + e.message);
+                });
             } else {
                 // Local streams were explicitly excluded.
                 resolve([]);
@@ -677,21 +714,23 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
                 throw error;
             })
             .then((streams: any) => {
-                try {
-                    streams = [].concat(streams);
-                    streams.forEach((stream: any) => {
-                        if (this.peerConnection.addTrack) {
-                            stream.getTracks().forEach((track: any) => {
-                                this.peerConnection.addTrack(track, stream);
-                            });
-                        } else {
+                // try {
+                    // streams = [].concat(streams);
+                    // streams.forEach((stream: any) => {
+                    //     if (this.peerConnection.addTrack) {
+                    //         stream.getTracks().forEach((track: any) => {
+                    //             this.peerConnection.addTrack(track, stream);
+                    //         });
+                    //     } else {
                             // Chrome 59 does not support addTrack
-                            (this.peerConnection as any).addStream(stream);
-                        }
-                    });
-                } catch (e) {
-                    return Promise.reject(e);
-                }
+                            (this.peerConnection as any).addStream(streams);
+                            this.vdiCitrix.mapAudioElement(this.localAudio);
+                            this.localAudio.srcObject = streams;
+                        // }
+                    // });
+                // } catch (e) {
+                //     return Promise.reject(e);
+                // }
                 return Promise.resolve();
             })
             .catch(e => {
@@ -709,6 +748,12 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
 
     private hasOffer(where: string): boolean {
         const offerState: string = 'have-' + where + '-offer';
+        this.logger.log(
+            'has offer is called with offerState = ' +
+                offerState +
+                ' and signalling state as = ' +
+                this.peerConnection.signalingState
+        );
         return this.peerConnection.signalingState === offerState;
     }
 
@@ -751,6 +796,7 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
                 this.direction = this.C.DIRECTION.NULL;
                 break;
         }
+        this.logger.log('direction of the call is set to ' + this.direction);
         this.observer.directionChanged();
     }
 

@@ -101,6 +101,7 @@ export default class WebPhone {
         if (options.enableDefaultModifiers !== false) {
             modifiers.push(Web.Modifiers.stripG722);
             modifiers.push(Web.Modifiers.stripTcpCandidates);
+            modifiers.push(Web.Modifiers.stripVideo);
         }
 
         if (options.enableMidLinesInSDP) {
