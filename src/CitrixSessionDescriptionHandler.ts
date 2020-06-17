@@ -55,8 +55,8 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
     private constraints: any;
     private vdiCitrix: any;
 
-    private localAudio : any;
-    private remoteAudio:any;
+    private localAudio: any;
+    private remoteAudio: any;
     private RTCOfferOptions: any;
 
     constructor(logger: Logger, observer: SessionDescriptionHandlerObserver, options: any) {
@@ -108,7 +108,7 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
 
         this.constraints = this.checkAndDefaultConstraints(this.options.constraints);
 
-        this.localAudio =  this.options.localAudio;
+        this.localAudio = this.options.localAudio;
         this.remoteAudio = this.options.remoteAudio;
         this.RTCOfferOptions = this.options.RTCOfferOptions;
     }
@@ -413,9 +413,7 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
             type: undefined
         };
 
-
-
-        console.error('RTCOfferOptions',RTCOfferOptions);
+        console.error('RTCOfferOptions', RTCOfferOptions);
 
         const createOfferOrAnswerPromise = () => {
             return new Promise((resolve, reject) => {
@@ -477,7 +475,7 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
                 return Utils.reducePromises(modifiers, localDescription);
             })
             .then((localDescription: RTCSessionDescriptionInit) => {
-                console.error('Final return of localDescription',localDescription);
+                console.error('Final return of localDescription', localDescription);
                 this.setDirection(localDescription.sdp || '');
                 return localDescription;
             })
@@ -546,22 +544,29 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
 
         this.peerConnection = new this.vdiCitrix.CitrixPeerConnection(options.rtcConfiguration);
 
+        // this.vdiCitrix.mapAudioElement(this.remoteAudio);
+        // this.vdiCitrix.mapAudioElement(this.localAudio);
+
         this.logger.log('New peer connection created');
 
         //Citrix SDK doesnt support addTrack so no 'ontrack'
         if ('ontrack' in this.peerConnection) {
-            this.peerConnection.addEventListener('track', (e: any) => {
-                this.logger.log('track added ' + e);
-                this.observer.trackAdded();
-                this.emit('addTrack', e);
-            });
+            this.logger.warn('Using onaddstream which is deprecated');
+            (this.peerConnection as any).ontrack = (e: any) => {
+                this.logger.log('stream added ' + e);
+                // this.vdiCitrix.mapAudioElement(this.remoteAudio);
+                // this.remoteAudio.srcObject = e.stream;
+                this.emit('addStream', e);
+                this.addTrack();
+            };
         } else {
             this.logger.warn('Using onaddstream which is deprecated');
             (this.peerConnection as any).onaddstream = (e: any) => {
                 this.logger.log('stream added ' + e);
-                this.vdiCitrix.mapAudioElement(this.remoteAudio);
-                this.remoteAudio.srcObject = e.stream;
+                // this.vdiCitrix.mapAudioElement(this.remoteAudio);
+                // this.remoteAudio.srcObject = e.stream;
                 this.emit('addStream', e);
+                this.addTrack();
             };
         }
 
@@ -714,23 +719,25 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
                 throw error;
             })
             .then((streams: any) => {
-                // try {
+                try {
                     // streams = [].concat(streams);
                     // streams.forEach((stream: any) => {
                     //     if (this.peerConnection.addTrack) {
                     //         stream.getTracks().forEach((track: any) => {
                     //             this.peerConnection.addTrack(track, stream);
+                    //             this.addTrack();
                     //         });
                     //     } else {
-                            // Chrome 59 does not support addTrack
-                            (this.peerConnection as any).addStream(streams);
-                            this.vdiCitrix.mapAudioElement(this.localAudio);
-                            this.localAudio.srcObject = streams;
-                        // }
+                    // Chrome 59 does not support addTrack
+                    (this.peerConnection as any).addStream(streams);
+                    // this.addTrack();
+                    this.vdiCitrix.mapAudioElement(this.localAudio);
+                    this.localAudio.srcObject = streams;
+                    // }
                     // });
-                // } catch (e) {
-                //     return Promise.reject(e);
-                // }
+                } catch (e) {
+                    return Promise.reject(e);
+                }
                 return Promise.resolve();
             })
             .catch(e => {
@@ -750,9 +757,9 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
         const offerState: string = 'have-' + where + '-offer';
         this.logger.log(
             'has offer is called with offerState = ' +
-                offerState +
-                ' and signalling state as = ' +
-                this.peerConnection.signalingState
+            offerState +
+            ' and signalling state as = ' +
+            this.peerConnection.signalingState
         );
         return this.peerConnection.signalingState === offerState;
     }
@@ -827,5 +834,59 @@ export class CitrixSessionDescriptionHandler extends EventEmitter implements Web
         // }
         this.logger.log('ICE is not complete. Returning promise');
         return this.iceGatheringDeferred ? this.iceGatheringDeferred.promise : Promise.resolve();
+    }
+
+    private addTrack(): void {
+        console.error('ADD TRACK CALLED');
+        const pc = this.peerConnection;
+
+        console.error('peerconnection on addTrack ', pc);
+
+        var remoteStream;
+        if (pc.getReceivers) {
+            remoteStream = pc.getReceivers()[0];
+            console.error('Remote stream is  ', remoteStream);
+            // pc.getReceivers().forEach(receiver => {
+            //     const rtrack = receiver.track;
+            //     console.error('Remote track added', rtrack);
+            //     if (rtrack) {
+            //         remoteStream.addTrack(rtrack);
+            //     }
+            // });
+        } else {
+            remoteStream = pc.getRemoteStreams()[0];
+            console.error('Remote track added', remoteStream);
+        }
+
+        if (remoteStream) {
+            this.vdiCitrix.mapAudioElement(this.remoteAudio);
+            this.remoteAudio.srcObject = remoteStream;
+        }
+        // remoteAudio.play().catch(() => {
+        //     this.logger.log('Remote play was rejected');
+        // });
+
+        var localStream;
+        if (pc.getSenders) {
+            localStream = pc.getSenders()[0];
+            console.error('Local stream is  ', localStream);
+            // pc.getSenders().forEach(sender => {
+            //     const strack = sender.track;
+            //     console.error('Local track added ', strack);
+            //     if (strack && strack.kind === 'audio') {
+            //         localStream.addTrack(strack);
+            //     }
+            // });
+        } else {
+            localStream = pc.getLocalStreams()[0];
+            console.error('Local track added ' + localStream);
+        }
+        if (localStream) {
+            this.vdiCitrix.mapAudioElement(this.localAudio);
+            this.localAudio.srcObject = localStream;
+        }
+        // this.localAudio.play().catch(() => {
+        //     this.logger.log('Local play was rejected');
+        // });
     }
 }

@@ -5,9 +5,9 @@ import {uuid, delay, extend} from './utils';
 import {WebPhoneSession} from './session';
 import {AudioHelperOptions} from './audioHelper';
 import {default as MediaStreams, MediaStreamsImpl} from './mediaStreams';
-import {DefaultSessionDescriptionHandler} from "./DefaultSessionDescriptionHandler";
-import {CitrixSessionDescriptionHandler} from "./CitrixSessionDescriptionHandler";
-import {Logger} from "sip.js/types/logger-factory";
+import {DefaultSessionDescriptionHandler} from './DefaultSessionDescriptionHandler';
+import {CitrixSessionDescriptionHandler} from './CitrixSessionDescriptionHandler';
+import {Logger} from 'sip.js/types/logger-factory';
 import {SessionDescriptionHandlerObserver} from 'sip.js/lib/Web/SessionDescriptionHandlerObserver';
 
 const {version} = require('../package.json');
@@ -53,6 +53,8 @@ export interface WebPhoneOptions {
     enableDefaultModifiers?: boolean;
     enablePlanB?: boolean;
     stunServers?: any;
+    localAudio?: any;
+    remoteAudio?: any;
 }
 
 export default class WebPhone {
@@ -136,6 +138,10 @@ export default class WebPhone {
             modifiers
         };
 
+        var RTCOfferOptions = {
+            mandatory: {OfferToReceiveAudio: true, OfferToReceiveVideo: true}
+        };
+
         const browserUa = navigator.userAgent.toLowerCase();
         let isSafari = false;
         let isFirefox = false;
@@ -150,6 +156,10 @@ export default class WebPhone {
             sessionDescriptionHandlerFactoryOptions.alwaysAcquireMediaFirst = true;
         }
 
+        sessionDescriptionHandlerFactoryOptions.localAudio = options.localAudio;
+        sessionDescriptionHandlerFactoryOptions.remoteAudio = options.remoteAudio;
+        sessionDescriptionHandlerFactoryOptions.RTCOfferOptions = RTCOfferOptions;
+
         //TODO: changes vyshakhbabji
         // const sessionDescriptionHandlerFactory = options.sessionDescriptionHandlerFactory || [];
         // const sessionDescriptionHandlerFactory = function(session, options) {
@@ -160,7 +170,10 @@ export default class WebPhone {
 
         //TODO: changes VB
         const sessionDescriptionHandlerFactory = function(session, options) {
-            const logger: Logger = session.ua.getLogger("sip.invitecontext.citrixSessionDescriptionHandler", session.id);
+            const logger: Logger = session.ua.getLogger(
+                'sip.invitecontext.citrixSessionDescriptionHandler',
+                session.id
+            );
             const observer: SessionDescriptionHandlerObserver = new SessionDescriptionHandlerObserver(session, options);
             return new CitrixSessionDescriptionHandler(logger, observer, sessionDescriptionHandlerFactoryOptions);
         };

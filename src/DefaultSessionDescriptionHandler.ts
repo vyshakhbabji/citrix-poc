@@ -50,7 +50,7 @@ export class DefaultSessionDescriptionHandler extends EventEmitter implements We
         session: InviteClientContext | InviteServerContext,
         options: any
     ): DefaultSessionDescriptionHandler {
-        const logger: Logger = session.ua.getLogger('sip.invitecontext.sessionDescriptionHandler', session.id);
+        const logger: Logger = session.ua.getLogger('sip.invitecontext.defaultOptionalsessionDescriptionHandler', session.id);
         const observer: SessionDescriptionHandlerObserver = new SessionDescriptionHandlerObserver(session, options);
         return new DefaultSessionDescriptionHandler(logger, observer, options);
     }

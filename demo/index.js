@@ -78,6 +78,7 @@ $(function() {
     const selectors = [audioInputSelect, audioOutputSelect, videoInputSelect];
     audioOutputSelect.disabled = !('sinkId' in HTMLMediaElement.prototype);
 
+    var inputDeviceID = '';
 
     /******************************************************************************************************************************************/
 
@@ -98,6 +99,7 @@ $(function() {
             if (deviceInfo.kind === 'audioinput') {
                 option.text = deviceInfo.label || `microphone ${audioInputSelect.length + 1}`;
                 audioInputSelect.appendChild(option);
+                inputDeviceID = option.text;
             } else if (deviceInfo.kind === 'audiooutput') {
                 option.text = deviceInfo.label || `speaker ${audioOutputSelect.length + 1}`;
                 audioOutputSelect.appendChild(option);
@@ -171,18 +173,11 @@ $(function() {
             });
         }
         const audioSource = audioInputSelect.value;
+
+        console.error('audioSource is ', audioSource);
+
         const constraints = {
-            audio: {deviceId: audioSource ? {exact: audioSource} : undefined},
-            video: {
-                mandatory: {
-                    sourceId: videoSource,
-                    minWidth: 1,
-                    maxWidth: 1,
-                    minHeight: 1,
-                    maxHeight: 1,
-                    maxFrameRate: 30
-                }
-            }
+            audio: {deviceId: audioSource ? {exact: audioSource} : undefined}
         };
     }
 
@@ -295,7 +290,9 @@ $(function() {
         sipInfo = data.sipInfo[0] || data.sipInfo;
 
         //TODO: vyshakhbabji use this for Citrix
-        var audioSource =  VDIaudioInput.value;
+        var audioSource =  audioInputSelect.value;
+
+        console.error('audioSource is ', audioSource);
 
         webPhone = new WebPhone(data, {
             appKey: localStorage.getItem('webPhoneAppKey'),
@@ -309,11 +306,15 @@ $(function() {
                 remote: remoteVideoElement,
                 local: localVideoElement
             },
-            enableQos: true,
+            enableQos: false,
             enableMediaReportLogging: false,
 
-            //TODO: vyshakhbabji use this for Citrix
-            mediaConstraints : {audio: audioSource , audioOutput : audioOutputSelect},
+            //TODO: vyshakhbabji use this for Citrixaudio: { deviceId: audioSource }
+            mediaConstraints : {audio: { deviceId: audioSource }},
+
+            localAudio: localVideoElement ,
+            remoteAudio: audioOutputSelect,
+
             enableCitrix : citrixEnv
         });
 
@@ -362,6 +363,7 @@ $(function() {
     }
 
     function onInvite(session) {
+
         console.log('EVENT: Invite', session.request);
         console.log('To', session.request.to.displayName, session.request.to.friendlyName);
         console.log('From', session.request.from.displayName, session.request.from.friendlyName);
@@ -614,10 +616,10 @@ $(function() {
         session.on('accepted', function() {
             console.log('Event: Accepted');
             audioInputSelect.onchange = function() {
-                start(session);
+                // start(session);
             };
             audioOutputSelect.onchange = changeAudioDestination;
-            start(session);
+            // start(session);
         });
         session.on('progress', function() {
             console.log('Event: Progress');
@@ -626,9 +628,9 @@ $(function() {
             console.log('Event: Rejected');
             close();
         });
-        session.on('failed', function() {
-            console.log('Event: Failed', arguments);
-            close();
+        session.on('failed', function (request) {
+            var cause = request.cause; //sometimes this is request.
+            console.error('');
         });
         session.on('terminated', function() {
             console.log('Event: Terminated');
@@ -686,6 +688,7 @@ $(function() {
 
         if(citrixEnv)
             CitrixWebRTC.enumerateDevices().then(gotDevices).then(handleError);
+
         else
             navigator.mediaDevices.enumerateDevices().then(gotDevices).then(handleError);
 
@@ -735,6 +738,7 @@ $(function() {
     function makeLoginForm() {
         var $form = cloneTemplate($loginTemplate);
         var $authForm = cloneTemplate($authFlowTemplate);
+        CitrixWebRTC.enumerateDevices().then(gotDevices).then(handleError);
 
         var $server = $authForm.find('input[name=server]').eq(0);
         var $appKey = $authForm.find('input[name=appKey]').eq(0);
